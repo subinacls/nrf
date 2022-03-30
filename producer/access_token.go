@@ -3,9 +3,8 @@ package producer
 import (
 	"net/http"
 	"time"
-
+	"fmt"
 	"github.com/dgrijalva/jwt-go"
-
 	"github.com/free5gc/http_wrapper"
 	nrf_context "github.com/free5gc/nrf/context"
 	"github.com/free5gc/nrf/logger"
@@ -33,9 +32,37 @@ func HandleAccessTokenRequest(request *http_wrapper.Request) *http_wrapper.Respo
 	return http_wrapper.NewResponse(http.StatusForbidden, nil, problemDetails)
 }
 
+
 func AccessTokenProcedure(request models.AccessTokenReq) (response *models.AccessTokenRsp,
+	func NewJWT(privateKey []byte, publicKey []byte) JWT {
+		return JWT{
+			privateKey: privateKey,
+			publicKey:  publicKey,
+		}
+	}
 	errResponse *models.AccessTokenErr) {
 	logger.AccessTokenLog.Infoln("In AccessTokenProcedure")
+	type JWT struct {
+	privateKey []byte
+	publicKey  []byte
+	}
+	
+	prvKey, err := ioutil.ReadFile("./support/TLS/NRF.key")
+	if err != nil {
+		log.Fatalln(err)
+	}
+	logger.AccessTokenLog.Infoln("Loaded NRF PVT Key")
+	pubKey, err := ioutil.ReadFile("./suuport/TLS/NRF.pub")
+	if err != nil {
+		log.Fatalln(err)
+	}
+	logger.AccessTokenLog.Infoln("Exiting NRF Key loading")
+
+
+	key, err := jwt.ParseRSAPrivateKeyFromPEM(j.privateKey)
+	if err != nil {
+		return "", fmt.Errorf("create: parse key: %w", err)
+	}
 
 	var expiration int32 = 1000
 	scope := request.Scope
@@ -52,12 +79,13 @@ func AccessTokenProcedure(request models.AccessTokenReq) (response *models.Acces
 		StandardClaims: jwt.StandardClaims{},
 	}
 	accessTokenClaims.IssuedAt = int64(now)
-
-	mySigningKey := []byte("NRF") // AllYourBase
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, accessTokenClaims)
-	accessToken, err := token.SignedString(mySigningKey)
+	token, err := jwt.NewWithClaims(jwt.SigningMethodRS256, accessTokenClaims)
 	if err != nil {
-		logger.AccessTokenLog.Warnln("Signed string error: ", err)
+		return "", fmt.Errorf("RSA Token generation failed: %w", err)
+	}
+	accessToken, err := token.SignedString(key)
+	if err != nil {
+		logger.AccessTokenLog.Warnln("RSA Token signature failed: %w", err)
 		errResponse = &models.AccessTokenErr{
 			Error: "invalid_request",
 		}
